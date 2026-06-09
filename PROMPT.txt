@@ -1,0 +1,47 @@
+需求：Python Polars 多维数据立方体（OLAP cube）后端 API，多维 / 聚合 / 下钻 / 导出 / 缓存 / 权限。
+
+背景：组里做报表系统时发现，业务方经常要"按 X 维度聚合、按 Y 维度下钻"——传统 SQL 写起来很啰嗦、慢。我们想要一个 OLAP 立方体后端：业务方传 (维度 + 度量 + 过滤) 立方体自动算，秒级响应。技术栈 Python + Polars（比 pandas 快 10x）+ SQLite（轻量存储）。
+
+核心功能：
+- 数据源：导入 CSV / Parquet / 接入 REST API（mock）
+- 维度：时间 / 地区 / 产品 / 客户类型 / 渠道（可任意组合）
+- 度量：销售额 / 订单数 / 客单价 / 复购率（sum / count / avg / distinct count）
+- 上卷：按时间从"日"卷到"月" / "季" / "年"
+- 下钻：从"年"钻到"月" / "日"
+- 切片：固定一个维度的值（如只看华东）
+- 旋转：交换行列维度
+- 排序：按任一度量降序 / 升序
+- 过滤：多条件（> / < / in / between / 模糊）
+- 缓存：常用查询结果缓存到 Redis（mock 用内存字典）
+- 增量刷新：上游数据变更后，立方体自动 / 定时刷新
+- 权限：不同角色看到不同维度的数据（如区域经理只看本区）
+- 导出：CSV / Excel / Parquet
+
+涉及模块：
+- `app/api/`：cube、dimensions、measures、queries
+- `app/engine/`：OLAP 引擎、Polars 查询
+- `app/storage/`：Parquet 列存、SQLite 元数据
+- `app/cache/`：查询缓存、失效策略
+- `app/refresh/`：定时刷新、增量更新
+- `app/permissions/`：行级权限
+
+注意事项：
+- Polars 用 `pl.scan_parquet().filter(...).groupby(...).agg(...)` 惰性求值，比 pandas 快
+- OLAP 核心用 Polars 的 groupby + agg + pivot，逻辑全内存
+- 维度表 / 事实表：维度表小（内存 join），事实表大（懒加载）
+- 上卷 / 下钻用 groupby 的 level 参数（Polars 支持 multi-index groupby）
+- 切片是固定一个维度值，等价于 filter(`region == 'East'`)
+- 旋转用 Polars 的 `pivot(index=, columns=, values=)` 操作
+- 排序：聚合后 `sort(by=metric, descending=True)`
+- 过滤组合：Polars 的 filter 支持表达式组合 `&` `|` `~`
+- 缓存 key = hash(查询的维度 + 度量 + 过滤 + 排序)，重复查询秒返
+- 缓存失效：上游数据 import 后失效相关 key（最简：失效全部 → 后台异步重建）
+- 增量刷新：上游表有 last_modified 字段，只拉新增 / 变更
+- 行级权限：在 Polars filter 阶段注入 `WHERE org_id = ?` 条件，不要在结果集上过滤
+- 导出 CSV 用 `df.write_csv()`，Parquet 用 `write_parquet()`，Excel 用 openpyxl
+- 大数据量（> 1亿行）：Polars 流式（`pl.scan_csv` + `sink_parquet`）
+- 性能基准：1 亿行 × 5 维度 groupby 聚合 < 5 秒
+- 内存管理：Polars 多个 DataFrame 共享 Arrow buffer，引用计数
+- 测试：核心查询（聚合 / 上卷 / 下钻 / 权限过滤）用 pytest + 真实数据
+- API 用 FastAPI 异步，Polars 内部跑在 to_thread
+- 监控：查询耗时分布、缓存命中率
