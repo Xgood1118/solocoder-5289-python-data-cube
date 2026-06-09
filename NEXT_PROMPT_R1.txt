@@ -1,1 +1,1 @@
-OLAP 立方体 API 启动正常，/api/v1/cubes、queries、admin/cache/stats 这些读接口都通，但创建立方体这条路是死的：POST /api/v1/admin/cubes 直接返 501，错误信息告诉用户去用 /api/v1/admin/cubes/full，结果这个 /full 端点根本不存在（openapi.json 里都没有），结果就是任何 cube 都建不出来，query 和 export 接口也无从测。检查修复一下。
+创建立方体功能不好使：POST /api/v1/admin/cubes 直接返 501，错误信息告诉用户去用 /api/v1/admin/cubes/full，结果这个 /full 端点根本不存在（openapi.json 里都没有），任何 cube 都建不出来。检查修复一下。

@@ -241,6 +241,110 @@ class TestQueryAPI:
 
 
 class TestAdminAPI:
+    def test_create_cube_success(self, client):
+        response = client.post(
+            "/api/v1/admin/cubes",
+            json={
+                "name": "test_cube",
+                "fact_table": "sales",
+                "description": "Test cube",
+                "dimensions": [
+                    {
+                        "name": "region",
+                        "type": "geo",
+                        "description": "Region",
+                        "column": "region",
+                    }
+                ],
+                "measures": [
+                    {
+                        "name": "sales_amount",
+                        "type": "sum",
+                        "description": "Total sales",
+                        "column": "sales_amount",
+                        "agg": "sum",
+                    }
+                ],
+            },
+            headers={"x-role": "admin"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "test_cube"
+        assert len(data["dimensions"]) == 1
+        assert len(data["measures"]) == 1
+
+    def test_create_cube_duplicate(self, client):
+        body = {
+            "name": "dup_cube",
+            "fact_table": "sales",
+            "dimensions": [
+                {
+                    "name": "region",
+                    "type": "geo",
+                    "column": "region",
+                }
+            ],
+            "measures": [
+                {
+                    "name": "sales_amount",
+                    "type": "sum",
+                    "column": "sales_amount",
+                    "agg": "sum",
+                }
+            ],
+        }
+        client.post(
+            "/api/v1/admin/cubes",
+            json=body,
+            headers={"x-role": "admin"},
+        )
+        response = client.post(
+            "/api/v1/admin/cubes",
+            json=body,
+            headers={"x-role": "admin"},
+        )
+        assert response.status_code == 409
+
+    def test_create_cube_not_admin(self, client):
+        response = client.post(
+            "/api/v1/admin/cubes",
+            json={
+                "name": "test_cube_2",
+                "dimensions": [],
+                "measures": [],
+            },
+            headers={"x-role": "viewer"},
+        )
+        assert response.status_code == 403
+
+    def test_create_cube_default_fact_table(self, client):
+        response = client.post(
+            "/api/v1/admin/cubes",
+            json={
+                "name": "auto_fact_cube",
+                "dimensions": [
+                    {
+                        "name": "region",
+                        "type": "geo",
+                        "column": "region",
+                    }
+                ],
+                "measures": [
+                    {
+                        "name": "cnt",
+                        "type": "count",
+                        "column": "order_id",
+                        "agg": "count",
+                    }
+                ],
+            },
+            headers={"x-role": "admin"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "auto_fact_cube"
+
     def test_cache_stats(self, client):
         response = client.get(
             "/api/v1/admin/cache/stats", headers={"x-role": "admin"}

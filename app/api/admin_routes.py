@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.api.cube_service import cube_service
 from app.api.deps import get_current_user
 from app.models import (
+    CreateCubeRequest,
+    CubeInfo,
     DimensionSchema,
     MeasureSchema,
     Role,
@@ -23,18 +25,35 @@ def _check_admin(user: UserContext) -> None:
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
-@router.post("/cubes")
+@router.post("/cubes", response_model=CubeInfo)
 async def create_cube(
-    name: str = Form(...),
-    fact_table: str = Form(...),
-    description: str | None = Form(default=None),
+    request: CreateCubeRequest,
     user: UserContext = Depends(get_current_user),
 ):
     _check_admin(user)
-    raise HTTPException(
-        status_code=501,
-        detail="Use POST /admin/cubes/full with JSON body for full cube creation",
-    )
+
+    existing = await asyncio.to_thread(cube_service.get_cube, request.name)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cube '{request.name}' already exists",
+        )
+
+    fact_table = request.fact_table or request.name
+
+    try:
+        cube = await asyncio.to_thread(
+            cube_service.create_cube,
+            name=request.name,
+            fact_table=fact_table,
+            dimensions=request.dimensions,
+            measures=request.measures,
+            description=request.description,
+            dimension_tables=request.dimension_tables,
+        )
+        return cube
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/cubes/{cube_name}/load")

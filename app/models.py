@@ -107,6 +107,15 @@ class CubeInfo(BaseModel):
     last_refreshed: str | None = None
 
 
+class CreateCubeRequest(BaseModel):
+    name: str
+    fact_table: str | None = None
+    description: str | None = None
+    dimensions: list[DimensionSchema]
+    measures: list[MeasureSchema]
+    dimension_tables: dict[str, str] | None = None
+
+
 class ExportFormat(str, Enum):
     CSV = "csv"
     EXCEL = "excel"
